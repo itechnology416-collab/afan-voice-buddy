@@ -3,9 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { AudioWaveform } from "./AudioWaveform";
+import { VoiceSelector } from "./VoiceSelector";
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
-import { Play, Pause, Square, Volume2, Sparkles } from "lucide-react";
+import { Play, Pause, Square, Volume2, Sparkles, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const SAMPLE_TEXTS = [
   "Akkam jirta? Nagaatti.",
@@ -13,11 +15,31 @@ const SAMPLE_TEXTS = [
   "Afaan Oromoo afaan guddaa fi bareedaa dha.",
   "Galata qabda.",
   "Maqaan koo Oromoo dha.",
+  "Ani Afaan Oromoo nan jaalladha.",
+  "Baga nagaan dhufte.",
+  "Guyyaan kee gaarii haa ta'u.",
 ];
 
 export const TextToSpeechConverter = () => {
   const [text, setText] = useState("");
-  const { speak, stop, pause, resume, isSpeaking, isPaused, isSupported, error } = useSpeechSynthesis();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const { 
+    speak, 
+    stop, 
+    pause, 
+    resume, 
+    isSpeaking, 
+    isPaused, 
+    isSupported, 
+    error,
+    voices,
+    selectedVoice,
+    setSelectedVoice,
+    rate,
+    setRate,
+    pitch,
+    setPitch,
+  } = useSpeechSynthesis();
   const { toast } = useToast();
 
   const handleSpeak = () => {
@@ -99,12 +121,50 @@ export const TextToSpeechConverter = () => {
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="Barreeffama Afaan Oromoo asitti barreessi..."
-              className="min-h-[160px] resize-none bg-background border-input text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 transition-all"
+              className="min-h-[140px] resize-none bg-background border-input text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/20 transition-all"
             />
             <p className="text-xs text-muted-foreground text-right">
               {text.length} characters
             </p>
           </div>
+
+          {/* Voice Settings Collapsible */}
+          <Collapsible open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full justify-between"
+              >
+                <span className="flex items-center gap-2">
+                  <Settings2 className="w-4 h-4" />
+                  Qindaa'ina sagalee (Voice Settings)
+                  {selectedVoice && (
+                    <span className="text-xs text-muted-foreground">
+                      - {selectedVoice.gender === 'female' ? 'Dubartii' : 'Dhiira'}
+                    </span>
+                  )}
+                </span>
+                {isSettingsOpen ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-4">
+              <div className="p-4 bg-muted/50 rounded-lg">
+                <VoiceSelector
+                  voices={voices}
+                  selectedVoice={selectedVoice}
+                  onVoiceChange={setSelectedVoice}
+                  rate={rate}
+                  onRateChange={setRate}
+                  pitch={pitch}
+                  onPitchChange={setPitch}
+                />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
           {/* Audio Visualization */}
           <div className="flex items-center justify-center py-4">
