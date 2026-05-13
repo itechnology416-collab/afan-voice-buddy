@@ -8,6 +8,7 @@ import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
 import { Play, Pause, Square, Volume2, Sparkles, Settings2, ChevronDown, ChevronUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { addHistory } from "@/lib/history";
 
 const SAMPLE_TEXTS = [
   "Akkam jirta? Nagaatti.",
@@ -52,6 +53,7 @@ export const TextToSpeechConverter = () => {
       return;
     }
     speak(text);
+    addHistory({ kind: "tts", text });
   };
 
   const handleTogglePlayPause = () => {
