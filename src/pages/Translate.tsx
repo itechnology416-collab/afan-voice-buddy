@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +20,14 @@ const TranslatePage = () => {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const seed = sessionStorage.getItem("translate_input");
+    if (seed) {
+      setInput(seed);
+      sessionStorage.removeItem("translate_input");
+    }
+  }, []);
 
   const swap = () => {
     setSource(target);
