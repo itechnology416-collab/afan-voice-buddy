@@ -1,22 +1,18 @@
-import { Home, Mic, Volume2, History, Settings } from "lucide-react";
+import { Home, Mic, Volume2, History, Settings, Languages, LogIn, LogOut, User as UserIcon } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarHeader,
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
+  SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 
 const items = [
   { title: "Home", url: "/", icon: Home },
   { title: "Speech to Text", url: "/speech-to-text", icon: Mic },
   { title: "Text to Speech", url: "/text-to-speech", icon: Volume2 },
+  { title: "Translate", url: "/translate", icon: Languages },
   { title: "History", url: "/history", icon: History },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -25,6 +21,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { pathname } = useLocation();
+  const { user, signOut } = useAuth();
   const isActive = (path: string) =>
     path === "/" ? pathname === "/" : pathname.startsWith(path);
 
@@ -62,6 +59,29 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="p-3 border-t border-sidebar-border">
+        {user ? (
+          <div className="space-y-2">
+            {!collapsed && (
+              <div className="flex items-center gap-2 px-1 text-xs text-sidebar-foreground/80">
+                <UserIcon className="w-3.5 h-3.5" />
+                <span className="truncate">{user.email}</span>
+              </div>
+            )}
+            <Button variant="ghost" size="sm" onClick={signOut} className="w-full justify-start">
+              <LogOut className="w-4 h-4" />
+              {!collapsed && <span className="ml-2">Sign out</span>}
+            </Button>
+          </div>
+        ) : (
+          <Button asChild variant="default" size="sm" className="w-full justify-start">
+            <NavLink to="/auth">
+              <LogIn className="w-4 h-4" />
+              {!collapsed && <span className="ml-2">Sign in</span>}
+            </NavLink>
+          </Button>
+        )}
+      </SidebarFooter>
     </Sidebar>
   );
 }

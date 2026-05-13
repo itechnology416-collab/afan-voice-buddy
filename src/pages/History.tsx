@@ -1,18 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { getHistory, removeHistory, clearHistory, HistoryItem } from "@/lib/history";
-import { Mic, Volume2, Trash2, Copy } from "lucide-react";
+import { exportTxt, exportDocx, exportPdf, exportSrt } from "@/lib/export";
+import { Mic, Volume2, Trash2, Copy, FileText, FileType, FileDown, Subtitles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 const formatDate = (ts: number) => new Date(ts).toLocaleString();
 
 const HistoryPage = () => {
   const [items, setItems] = useState<HistoryItem[]>([]);
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  const refresh = () => setItems(getHistory());
-  useEffect(() => { refresh(); }, []);
+  const refresh = useCallback(async () => {
+    setItems(await getHistory());
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh, user]);
 
   const handleCopy = async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -24,10 +34,12 @@ const HistoryPage = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">History</h1>
-          <p className="text-muted-foreground">Your previous conversions, saved on this device.</p>
+          <p className="text-muted-foreground">
+            {user ? "Your transcriptions, synced across devices." : "Saved on this device. Sign in to sync."}
+          </p>
         </div>
         {items.length > 0 && (
-          <Button variant="outline" onClick={() => { clearHistory(); refresh(); }}>
+          <Button variant="outline" onClick={async () => { await clearHistory(); refresh(); }}>
             <Trash2 className="w-4 h-4 mr-2" /> Clear all
           </Button>
         )}
@@ -47,13 +59,14 @@ const HistoryPage = () => {
                   : <Volume2 className="w-5 h-5 text-primary" />}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1 flex-wrap">
                   <span className="font-medium uppercase">{item.kind === "stt" ? "Speech → Text" : "Text → Speech"}</span>
                   <span>·</span>
                   <span>{formatDate(item.createdAt)}</span>
                   {item.dialect && item.dialect !== "general" && (
                     <><span>·</span><span className="capitalize">{item.dialect}</span></>
                   )}
+                  <Badge variant="outline" className="ml-1 text-[10px] py-0 px-1.5">{item.source}</Badge>
                 </div>
                 <p className="text-sm text-foreground whitespace-pre-wrap break-words line-clamp-4">
                   {item.text}
@@ -63,7 +76,31 @@ const HistoryPage = () => {
                 <Button variant="ghost" size="icon" onClick={() => handleCopy(item.text)}>
                   <Copy className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => { removeHistory(item.id); refresh(); }}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon"><FileDown className="w-4 h-4" /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => exportTxt(item.text)}>
+                      <FileText className="w-4 h-4 mr-2" /> .txt
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => exportDocx(item.text)}>
+                      <FileType className="w-4 h-4 mr-2" /> .docx
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => exportPdf(item.text)}>
+                      <FileType className="w-4 h-4 mr-2" /> .pdf
+                    </DropdownMenuItem>
+                    {item.kind === "stt" && (
+                      <DropdownMenuItem onClick={() => exportSrt(item.text, item.durationSeconds)}>
+                        <Subtitles className="w-4 h-4 mr-2" /> .srt
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button
+                  variant="ghost" size="icon"
+                  onClick={async () => { await removeHistory(item.id, item.source); refresh(); }}
+                >
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </div>

@@ -9,7 +9,10 @@ import SpeechToText from "./pages/SpeechToText";
 import TextToSpeech from "./pages/TextToSpeech";
 import HistoryPage from "./pages/History";
 import Settings from "./pages/Settings";
+import TranslatePage from "./pages/Translate";
+import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import { AuthProvider } from "./contexts/AuthContext";
 
 const queryClient = new QueryClient();
 
@@ -19,16 +22,20 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<Index />} />
-            <Route path="/speech-to-text" element={<SpeechToText />} />
-            <Route path="/text-to-speech" element={<TextToSpeech />} />
-            <Route path="/history" element={<HistoryPage />} />
-            <Route path="/settings" element={<Settings />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<Index />} />
+              <Route path="/speech-to-text" element={<SpeechToText />} />
+              <Route path="/text-to-speech" element={<TextToSpeech />} />
+              <Route path="/translate" element={<TranslatePage />} />
+              <Route path="/history" element={<HistoryPage />} />
+              <Route path="/settings" element={<Settings />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

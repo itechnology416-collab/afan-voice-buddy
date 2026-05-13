@@ -3,12 +3,17 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mic, Square, Upload, Loader2, Copy, Download, Trash2, FileAudio } from "lucide-react";
+import { Mic, Square, Upload, Loader2, Copy, Trash2, FileAudio, FileDown, FileText, FileType, Subtitles, Languages } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { addHistory } from "@/lib/history";
 import { DIALECTS } from "@/lib/dialects";
 import { cn } from "@/lib/utils";
+import { exportTxt, exportDocx, exportPdf, exportSrt } from "@/lib/export";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { useNavigate } from "react-router-dom";
 
 const ALLOWED = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a", "audio/m4a", "audio/webm", "audio/ogg"];
 
@@ -24,13 +29,30 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+async function getAudioDuration(blob: Blob): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("audio");
+    a.preload = "metadata";
+    a.onloadedmetadata = () => {
+      const d = isFinite(a.duration) ? a.duration : undefined;
+      URL.revokeObjectURL(url);
+      resolve(d);
+    };
+    a.onerror = () => { URL.revokeObjectURL(url); resolve(undefined); };
+    a.src = url;
+  });
+}
+
 const SpeechToText = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [text, setText] = useState("");
   const [dialect, setDialect] = useState("general");
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [duration, setDuration] = useState<number | undefined>(undefined);
   const [levels, setLevels] = useState<number[]>(Array(24).fill(4));
   const [dragOver, setDragOver] = useState(false);
 
@@ -41,6 +63,7 @@ const SpeechToText = () => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const recordStartRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
@@ -93,20 +116,24 @@ const SpeechToText = () => {
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       recorderRef.current = rec;
       chunksRef.current = [];
+      recordStartRef.current = Date.now();
       rec.ondataavailable = (e) => e.data.size && chunksRef.current.push(e.data);
       rec.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: mimeRef.current });
+        const recDuration = (Date.now() - recordStartRef.current) / 1000;
         const url = URL.createObjectURL(blob);
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         setAudioUrl(url);
-        await transcribeBlob(blob);
+        const d = (await getAudioDuration(blob)) ?? recDuration;
+        setDuration(d);
+        await transcribeBlob(blob, d);
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       };
       rec.start();
       startMeter(stream);
       setRecording(true);
-    } catch (err) {
+    } catch {
       toast({
         title: "Microphone error",
         description: "Please allow microphone access in your browser.",
@@ -121,7 +148,7 @@ const SpeechToText = () => {
     stopMeter();
   };
 
-  const transcribeBlob = async (blob: Blob) => {
+  const transcribeBlob = async (blob: Blob, dur?: number) => {
     setTranscribing(true);
     try {
       const base64 = await blobToBase64(blob);
@@ -134,7 +161,7 @@ const SpeechToText = () => {
       const transcript = result.text ?? "";
       setText(transcript);
       if (transcript) {
-        addHistory({ kind: "stt", text: transcript, dialect });
+        await addHistory({ kind: "stt", text: transcript, dialect, durationSeconds: dur });
         toast({ title: "Transcription complete" });
       } else {
         toast({ title: "No speech detected", variant: "destructive" });
@@ -166,7 +193,9 @@ const SpeechToText = () => {
     const url = URL.createObjectURL(file);
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(url);
-    await transcribeBlob(file);
+    const d = await getAudioDuration(file);
+    setDuration(d);
+    await transcribeBlob(file, d);
   };
 
   const onDrop = async (e: React.DragEvent) => {
@@ -182,15 +211,10 @@ const SpeechToText = () => {
     toast({ title: "Copied to clipboard" });
   };
 
-  const downloadText = () => {
+  const goTranslate = () => {
     if (!text) return;
-    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `transcription-${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    sessionStorage.setItem("translate_input", text);
+    navigate("/translate");
   };
 
   return (
@@ -216,7 +240,6 @@ const SpeechToText = () => {
             </Select>
           </div>
 
-          {/* Waveform */}
           <div className="flex items-end justify-center gap-1 h-16 bg-muted/40 rounded-xl p-3">
             {levels.map((h, i) => (
               <div
@@ -230,7 +253,6 @@ const SpeechToText = () => {
             ))}
           </div>
 
-          {/* Controls */}
           <div className="flex flex-wrap items-center justify-center gap-3">
             {!recording ? (
               <Button
@@ -255,7 +277,6 @@ const SpeechToText = () => {
             )}
           </div>
 
-          {/* Drag-drop upload */}
           <label
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
@@ -295,15 +316,36 @@ const SpeechToText = () => {
           )}
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <label className="text-sm font-medium">Transcription</label>
               <div className="flex gap-1">
                 <Button variant="ghost" size="sm" onClick={copyText} disabled={!text}>
                   <Copy className="w-4 h-4 mr-1" /> Copy
                 </Button>
-                <Button variant="ghost" size="sm" onClick={downloadText} disabled={!text}>
-                  <Download className="w-4 h-4 mr-1" /> Download
+                <Button variant="ghost" size="sm" onClick={goTranslate} disabled={!text}>
+                  <Languages className="w-4 h-4 mr-1" /> Translate
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" disabled={!text}>
+                      <FileDown className="w-4 h-4 mr-1" /> Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => exportTxt(text)}>
+                      <FileText className="w-4 h-4 mr-2" /> .txt
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => exportDocx(text, "transcription", "Transcription")}>
+                      <FileType className="w-4 h-4 mr-2" /> .docx
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => exportPdf(text, "transcription", "Transcription")}>
+                      <FileType className="w-4 h-4 mr-2" /> .pdf
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => exportSrt(text, duration)}>
+                      <Subtitles className="w-4 h-4 mr-2" /> .srt subtitles
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button variant="ghost" size="sm" onClick={() => setText("")} disabled={!text}>
                   <Trash2 className="w-4 h-4" />
                 </Button>
