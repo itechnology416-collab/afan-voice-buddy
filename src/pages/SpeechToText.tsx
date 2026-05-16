@@ -351,16 +351,16 @@ const SpeechToText = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => exportTxt(text)}>
+                    <DropdownMenuItem onClick={() => safeExport(".txt", () => exportTxt(text))}>
                       <FileText className="w-4 h-4 mr-2" /> .txt
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportDocx(text, "transcription", "Transcription")}>
+                    <DropdownMenuItem onClick={() => safeExport(".docx", () => exportDocx(text, "transcription", "Transcription"))}>
                       <FileType className="w-4 h-4 mr-2" /> .docx
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportPdf(text, "transcription", "Transcription")}>
+                    <DropdownMenuItem onClick={() => safeExport(".pdf", () => exportPdf(text, "transcription", "Transcription"))}>
                       <FileType className="w-4 h-4 mr-2" /> .pdf
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportSrt(text, duration)}>
+                    <DropdownMenuItem onClick={() => safeExport(".srt", () => exportSrt(text, duration))}>
                       <Subtitles className="w-4 h-4 mr-2" /> .srt subtitles
                     </DropdownMenuItem>
                   </DropdownMenuContent>
