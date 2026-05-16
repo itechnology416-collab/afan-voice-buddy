@@ -217,6 +217,24 @@ const SpeechToText = () => {
     navigate("/translate");
   };
 
+  const safeExport = async (label: string, fn: () => void | Promise<void>) => {
+    try {
+      await fn();
+      toast({ title: `Exported ${label}` });
+    } catch (err: any) {
+      toast({
+        title: `Export failed (${label})`,
+        description: err?.message ?? "Something went wrong.",
+        variant: "destructive",
+        action: (
+          <ToastAction altText="Retry" onClick={() => safeExport(label, fn)}>
+            Retry
+          </ToastAction>
+        ),
+      });
+    }
+  };
+
   return (
     <div className="container max-w-4xl mx-auto px-4 py-8 md:py-12 space-y-6 animate-fade-in">
       <div className="space-y-2">
