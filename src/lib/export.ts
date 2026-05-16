@@ -111,15 +111,17 @@ export function exportSrt(text: string, duration: number | undefined, base = "su
       count += w;
     }
     flush();
-    // If a single comma-part is still huge, hard-chunk by words.
-    const expanded: string[] = [];
-    for (const c of cueTexts.splice(0)) {
-      const w = c.split(/\s+/);
-      if (w.length <= maxWords) { expanded.push(c); continue; }
-      for (let i = 0; i < w.length; i += maxWords) expanded.push(w.slice(i, i + maxWords).join(" "));
-    }
-    cueTexts.push(...expanded);
   }
+
+  // Hard-chunk any remaining over-long cues by words.
+  const finalCues: string[] = [];
+  for (const c of cueTexts) {
+    const w = c.split(/\s+/);
+    if (w.length <= maxWords) { finalCues.push(c); continue; }
+    for (let i = 0; i < w.length; i += maxWords) finalCues.push(w.slice(i, i + maxWords).join(" "));
+  }
+  cueTexts.length = 0;
+  cueTexts.push(...finalCues);
 
   if (!cueTexts.length) return;
 
