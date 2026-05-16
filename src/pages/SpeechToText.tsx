@@ -178,8 +178,8 @@ const SpeechToText = () => {
   };
 
   const handleFile = async (file: File) => {
-    if (file.size > 25 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Max 25MB.", variant: "destructive" });
+    if (file.size > 100 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Max 100MB.", variant: "destructive" });
       return;
     }
     if (!ALLOWED.includes(file.type) && !/\.(mp3|wav|m4a|webm|ogg|mp4)$/i.test(file.name)) {
