@@ -65,29 +65,91 @@ const fmt = (s: number) => {
   return `${hh}:${mm}:${ss},${String(ms).padStart(3, "0")}`;
 };
 
+// Count Afaan Oromo syllables: vowel groups (aa/ee/ii/oo/uu count as 1).
+const syllableWeight = (s: string) => {
+  const lower = s.toLowerCase();
+  const matches = lower.match(/[aeiou]+/g);
+  // Fall back to char-count weight so silent/short tokens still consume time
+  return (matches?.length ?? 0) + Math.max(0, lower.length) * 0.05 + 0.5;
+};
+
 /**
- * Build .srt by chunking the text into ~6-word cues distributed evenly across `duration` seconds.
- * If duration is unknown, assumes 2.5s per cue.
+ * Build .srt aligned to spoken audio.
+ * - Splits text at sentence boundaries first, then breaks long sentences into ~7-word cues.
+ * - Distributes time proportionally to syllable count (better fit than equal slots).
+ * - Inserts small gaps between cues so subtitles don't crowd.
+ * - Caps cue duration to a readable range (1.2s min, 6s max).
  */
 export function exportSrt(text: string, duration: number | undefined, base = "subtitles") {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return;
-  const chunkSize = 6;
-  const cues: string[][] = [];
-  for (let i = 0; i < words.length; i += chunkSize) {
-    cues.push(words.slice(i, i + chunkSize));
+  const clean = text.trim();
+  if (!clean) return;
+
+  // 1. Sentence split, then word-chunk long sentences.
+  const sentences = clean
+    .split(/(?<=[.!?…])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const maxWords = 9;
+  const minWords = 3;
+  const cueTexts: string[] = [];
+  for (const sent of sentences) {
+    const words = sent.split(/\s+/);
+    if (words.length <= maxWords) {
+      cueTexts.push(sent);
+      continue;
+    }
+    // Prefer breaking at commas within long sentences
+    const commaParts = sent.split(/,\s+/);
+    const buf: string[] = [];
+    let count = 0;
+    const flush = () => { if (buf.length) { cueTexts.push(buf.join(", ")); buf.length = 0; count = 0; } };
+    for (const part of commaParts) {
+      const w = part.split(/\s+/).length;
+      if (count + w > maxWords && count >= minWords) flush();
+      buf.push(part);
+      count += w;
+    }
+    flush();
   }
-  const total = duration && duration > 0 ? duration : cues.length * 2.5;
-  const per = total / cues.length;
+
+  // Hard-chunk any remaining over-long cues by words.
+  const finalCues: string[] = [];
+  for (const c of cueTexts) {
+    const w = c.split(/\s+/);
+    if (w.length <= maxWords) { finalCues.push(c); continue; }
+    for (let i = 0; i < w.length; i += maxWords) finalCues.push(w.slice(i, i + maxWords).join(" "));
+  }
+  cueTexts.length = 0;
+  cueTexts.push(...finalCues);
+
+  if (!cueTexts.length) return;
+
+  // 2. Weight each cue by syllable count and distribute time proportionally.
+  const weights = cueTexts.map(syllableWeight);
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const total = duration && duration > 0 ? duration : Math.max(2, cueTexts.length * 2.5);
+  const gap = 0.08; // tiny gap between cues
+  const usable = Math.max(0.5, total - gap * (cueTexts.length - 1));
+
+  const minDur = 1.2;
+  const maxDur = 6.0;
+
   const lines: string[] = [];
-  cues.forEach((c, i) => {
-    const start = i * per;
-    const end = Math.min(total, (i + 1) * per);
+  let cursor = 0;
+  cueTexts.forEach((cue, i) => {
+    let dur = (weights[i] / totalWeight) * usable;
+    dur = Math.max(minDur, Math.min(maxDur, dur));
+    const start = cursor;
+    let end = start + dur;
+    if (i === cueTexts.length - 1) end = Math.min(total, end);
     lines.push(String(i + 1));
     lines.push(`${fmt(start)} --> ${fmt(end)}`);
-    lines.push(c.join(" "));
+    lines.push(cue);
     lines.push("");
+    cursor = end + gap;
   });
+
   const blob = new Blob([lines.join("\n")], { type: "application/x-subrip;charset=utf-8" });
   saveAs(blob, `${base}-${stamp()}.srt`);
 }

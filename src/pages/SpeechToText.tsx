@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Mic, Square, Upload, Loader2, Copy, Trash2, FileAudio, FileDown, FileText, FileType, Subtitles, Languages } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { supabase } from "@/integrations/supabase/client";
 import { addHistory } from "@/lib/history";
 import { DIALECTS } from "@/lib/dialects";
@@ -178,8 +179,8 @@ const SpeechToText = () => {
   };
 
   const handleFile = async (file: File) => {
-    if (file.size > 25 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Max 25MB.", variant: "destructive" });
+    if (file.size > 100 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Max 100MB.", variant: "destructive" });
       return;
     }
     if (!ALLOWED.includes(file.type) && !/\.(mp3|wav|m4a|webm|ogg|mp4)$/i.test(file.name)) {
@@ -215,6 +216,24 @@ const SpeechToText = () => {
     if (!text) return;
     sessionStorage.setItem("translate_input", text);
     navigate("/translate");
+  };
+
+  const safeExport = async (label: string, fn: () => void | Promise<void>) => {
+    try {
+      await fn();
+      toast({ title: `Exported ${label}` });
+    } catch (err: any) {
+      toast({
+        title: `Export failed (${label})`,
+        description: err?.message ?? "Something went wrong.",
+        variant: "destructive",
+        action: (
+          <ToastAction altText="Retry" onClick={() => safeExport(label, fn)}>
+            Retry
+          </ToastAction>
+        ),
+      });
+    }
   };
 
   return (
@@ -298,7 +317,7 @@ const SpeechToText = () => {
             />
             <Upload className="w-7 h-7 mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium">Drop audio file or click to upload</p>
-            <p className="text-xs text-muted-foreground mt-1">MP3 · WAV · M4A · WEBM · OGG (max 25MB)</p>
+            <p className="text-xs text-muted-foreground mt-1">MP3 · WAV · M4A · WEBM · OGG (max 100MB)</p>
           </label>
 
           {audioUrl && (
@@ -332,16 +351,16 @@ const SpeechToText = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => exportTxt(text)}>
+                    <DropdownMenuItem onClick={() => safeExport(".txt", () => exportTxt(text))}>
                       <FileText className="w-4 h-4 mr-2" /> .txt
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportDocx(text, "transcription", "Transcription")}>
+                    <DropdownMenuItem onClick={() => safeExport(".docx", () => exportDocx(text, "transcription", "Transcription"))}>
                       <FileType className="w-4 h-4 mr-2" /> .docx
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportPdf(text, "transcription", "Transcription")}>
+                    <DropdownMenuItem onClick={() => safeExport(".pdf", () => exportPdf(text, "transcription", "Transcription"))}>
                       <FileType className="w-4 h-4 mr-2" /> .pdf
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportSrt(text, duration)}>
+                    <DropdownMenuItem onClick={() => safeExport(".srt", () => exportSrt(text, duration))}>
                       <Subtitles className="w-4 h-4 mr-2" /> .srt subtitles
                     </DropdownMenuItem>
                   </DropdownMenuContent>
