@@ -298,7 +298,7 @@ const SpeechToText = () => {
             />
             <Upload className="w-7 h-7 mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium">Drop audio file or click to upload</p>
-            <p className="text-xs text-muted-foreground mt-1">MP3 · WAV · M4A · WEBM · OGG (max 25MB)</p>
+            <p className="text-xs text-muted-foreground mt-1">MP3 · WAV · M4A · WEBM · OGG (max 100MB)</p>
           </label>
 
           {audioUrl && (
