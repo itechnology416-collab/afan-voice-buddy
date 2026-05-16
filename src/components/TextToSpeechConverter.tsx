@@ -82,20 +82,40 @@ export const TextToSpeechConverter = () => {
       const { data, error: fnErr } = await supabase.functions.invoke("tts-elevenlabs", {
         body: { text, voiceId: premiumVoice, speed: premiumSpeed, stability: premiumStability },
       });
-      if (fnErr) throw fnErr;
-      const r = data as { audioContent?: string; mimeType?: string; error?: string };
-      if (r.error) throw new Error(r.error);
-      const url = `data:${r.mimeType ?? "audio/mpeg"};base64,${r.audioContent}`;
+      // Edge-function level error (network / non-2xx)
+      const payload = (data ?? {}) as { audioContent?: string; mimeType?: string; error?: string; retryable?: boolean; status?: number };
+      if (fnErr || payload.error || !payload.audioContent) {
+        const msg = payload.error
+          ?? fnErr?.message
+          ?? "Couldn't reach the premium voice service.";
+        const retryable = payload.retryable ?? true;
+        throw Object.assign(new Error(msg), { retryable });
+      }
+      const url = `data:${payload.mimeType ?? "audio/mpeg"};base64,${payload.audioContent}`;
       setPremiumAudioUrl(url);
       const a = new Audio(url);
       audioElRef.current = a;
       a.onplay = () => setPremiumPlaying(true);
       a.onended = () => setPremiumPlaying(false);
       a.onpause = () => setPremiumPlaying(false);
-      await a.play();
+      try {
+        await a.play();
+      } catch {
+        toast({ title: "Audio ready", description: "Tap play to listen — autoplay was blocked." });
+      }
       addHistory({ kind: "tts", text });
     } catch (err: any) {
-      toast({ title: "Premium TTS failed", description: err?.message ?? "", variant: "destructive" });
+      const retryable = err?.retryable !== false;
+      toast({
+        title: "Premium TTS failed",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+        action: retryable ? (
+          <ToastAction altText="Retry" onClick={() => handlePremiumSpeak()}>
+            Retry
+          </ToastAction>
+        ) : undefined,
+      });
     } finally {
       setPremiumBusy(false);
     }
