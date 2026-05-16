@@ -10,6 +10,7 @@ import {
   Loader2, Download, Languages, Crown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { addHistory } from "@/lib/history";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
