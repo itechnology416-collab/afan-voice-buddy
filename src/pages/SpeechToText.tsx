@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Mic, Square, Upload, Loader2, Copy, Trash2, FileAudio, FileDown, FileText, FileType, Subtitles, Languages } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { supabase } from "@/integrations/supabase/client";
 import { addHistory } from "@/lib/history";
 import { DIALECTS } from "@/lib/dialects";
