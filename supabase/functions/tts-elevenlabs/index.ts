@@ -44,7 +44,13 @@ Deno.serve(async (req) => {
     if (!r.ok) {
       const errText = await r.text();
       console.error("ElevenLabs error:", r.status, errText);
-      return new Response(JSON.stringify({ error: `TTS failed: ${r.status}`, detail: errText }), {
+      let userMsg = `Premium voice service error (${r.status}).`;
+      if (r.status === 401) userMsg = "ElevenLabs API key is invalid or missing. Please update it in project settings.";
+      else if (r.status === 402 || /quota|credit|payment/i.test(errText)) userMsg = "ElevenLabs quota exhausted. Add credits or switch to Browser voice.";
+      else if (r.status === 422) userMsg = "Voice request rejected — try shortening the text or pick a different voice.";
+      else if (r.status === 429) userMsg = "Too many requests. Please wait a few seconds and retry.";
+      else if (r.status >= 500) userMsg = "ElevenLabs service is temporarily unavailable. Please retry shortly.";
+      return new Response(JSON.stringify({ error: userMsg, status: r.status, retryable: r.status === 429 || r.status >= 500 }), {
         status: r.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
