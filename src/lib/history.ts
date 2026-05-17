@@ -11,6 +11,8 @@ export interface HistoryItem {
   audioUrl?: string;
   durationSeconds?: number;
   source: "local" | "cloud";
+  isPublic?: boolean;
+  shareToken?: string;
 }
 
 const KEY = "aon_history_v1";
@@ -31,9 +33,7 @@ function readLocal(): LocalRow[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 function writeLocal(items: LocalRow[]) {
@@ -82,6 +82,8 @@ export async function getHistory(): Promise<HistoryItem[]> {
       audioUrl: r.audio_url ?? undefined,
       durationSeconds: r.duration_seconds ?? undefined,
       source: "cloud" as const,
+      isPublic: !!r.is_public,
+      shareToken: r.share_token ?? undefined,
     }));
   }
   return readLocal().map((r) => ({ ...r, source: "local" as const }));
@@ -101,4 +103,44 @@ export async function clearHistory() {
     await supabase.from("transcriptions").delete().eq("user_id", user.id);
   }
   localStorage.removeItem(KEY);
+}
+
+// Share helpers --------------------------------------------------
+
+function genToken() {
+  // 22 chars, URL-safe
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export async function shareCloudTranscription(id: string): Promise<string> {
+  const token = genToken();
+  const { data, error } = await supabase
+    .from("transcriptions")
+    .update({ is_public: true, share_token: token })
+    .eq("id", id)
+    .select("share_token")
+    .maybeSingle();
+  if (error || !data?.share_token) throw error ?? new Error("Could not create share link.");
+  return data.share_token;
+}
+
+export async function unshareCloudTranscription(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("transcriptions")
+    .update({ is_public: false, share_token: null })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function getSharedTranscription(token: string) {
+  const { data, error } = await supabase
+    .from("transcriptions")
+    .select("kind, text, dialect, created_at, duration_seconds")
+    .eq("share_token", token)
+    .eq("is_public", true)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
