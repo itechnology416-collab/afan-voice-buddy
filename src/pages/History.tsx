@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getHistory, removeHistory, clearHistory, HistoryItem } from "@/lib/history";
+import { getHistory, removeHistory, clearHistory, HistoryItem, shareCloudTranscription } from "@/lib/history";
 import { exportTxt, exportDocx, exportPdf, exportSrt } from "@/lib/export";
-import { Mic, Volume2, Trash2, Copy, FileText, FileType, FileDown, Subtitles } from "lucide-react";
+import { Mic, Volume2, Trash2, Copy, FileText, FileType, FileDown, Subtitles, Share2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -76,6 +76,21 @@ const HistoryPage = () => {
                 <Button variant="ghost" size="icon" onClick={() => handleCopy(item.text)}>
                   <Copy className="w-4 h-4" />
                 </Button>
+                {item.source === "cloud" && (
+                  <Button variant="ghost" size="icon" title="Share" onClick={async () => {
+                    try {
+                      const token = item.shareToken ?? await shareCloudTranscription(item.id);
+                      const url = `${window.location.origin}/share/${token}`;
+                      await navigator.clipboard.writeText(url);
+                      toast({ title: "Share link copied", description: url });
+                      refresh();
+                    } catch (e: any) {
+                      toast({ title: "Could not share", description: e?.message, variant: "destructive" });
+                    }
+                  }}>
+                    <Share2 className="w-4 h-4" />
+                  </Button>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon"><FileDown className="w-4 h-4" /></Button>

@@ -15,6 +15,8 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
+import { chunkAudioFile } from "@/lib/audioChunker";
+import { Progress } from "@/components/ui/progress";
 
 const ALLOWED = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a", "audio/m4a", "audio/webm", "audio/ogg"];
 
@@ -56,6 +58,7 @@ const SpeechToText = () => {
   const [duration, setDuration] = useState<number | undefined>(undefined);
   const [levels, setLevels] = useState<number[]>(Array(24).fill(4));
   const [dragOver, setDragOver] = useState(false);
+  const [chunkProgress, setChunkProgress] = useState<{ current: number; total: number } | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -179,16 +182,12 @@ const SpeechToText = () => {
   };
 
   const handleFile = async (file: File) => {
-    if (file.size > 100 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Max 100MB.", variant: "destructive" });
+    if (file.size > 500 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Max 500MB.", variant: "destructive" });
       return;
     }
     if (!ALLOWED.includes(file.type) && !/\.(mp3|wav|m4a|webm|ogg|mp4)$/i.test(file.name)) {
-      toast({
-        title: "Unsupported file",
-        description: "Use MP3, WAV, M4A, WEBM, or OGG.",
-        variant: "destructive",
-      });
+      toast({ title: "Unsupported file", description: "Use MP3, WAV, M4A, WEBM, or OGG.", variant: "destructive" });
       return;
     }
     const url = URL.createObjectURL(file);
@@ -196,7 +195,44 @@ const SpeechToText = () => {
     setAudioUrl(url);
     const d = await getAudioDuration(file);
     setDuration(d);
-    await transcribeBlob(file, d);
+
+    // Small files: single-shot. Large files: decode + chunk + stitch.
+    if (file.size <= 18 * 1024 * 1024) {
+      await transcribeBlob(file, d);
+      return;
+    }
+    setTranscribing(true);
+    setText("");
+    try {
+      const chunks = await chunkAudioFile(file);
+      const parts: string[] = [];
+      const totalDur = chunks.reduce((a, c) => a + c.durationSec, 0);
+      setDuration(totalDur);
+      for (const c of chunks) {
+        setChunkProgress({ current: c.index + 1, total: c.total });
+        const base64 = await blobToBase64(c.blob);
+        const { data, error } = await supabase.functions.invoke("transcribe", {
+          body: { audio: base64, mimeType: "audio/wav", dialect },
+        });
+        if (error) throw error;
+        const r = (data as { text?: string; error?: string }) ?? {};
+        if (r.error) throw new Error(r.error);
+        if (r.text) parts.push(r.text.trim());
+        setText(parts.join(" "));
+      }
+      const transcript = parts.join(" ").trim();
+      if (transcript) {
+        await addHistory({ kind: "stt", text: transcript, dialect, durationSeconds: totalDur });
+        toast({ title: "Transcription complete" });
+      } else {
+        toast({ title: "No speech detected", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Transcription failed", description: err?.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setChunkProgress(null);
+      setTranscribing(false);
+    }
   };
 
   const onDrop = async (e: React.DragEvent) => {
@@ -317,8 +353,17 @@ const SpeechToText = () => {
             />
             <Upload className="w-7 h-7 mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium">Drop audio file or click to upload</p>
-            <p className="text-xs text-muted-foreground mt-1">MP3 · WAV · M4A · WEBM · OGG (max 100MB)</p>
+            <p className="text-xs text-muted-foreground mt-1">MP3 · WAV · M4A · WEBM · OGG (max 500MB · auto-chunked)</p>
           </label>
+
+          {chunkProgress && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground text-center">
+                Transcribing chunk {chunkProgress.current} of {chunkProgress.total}…
+              </p>
+              <Progress value={(chunkProgress.current / chunkProgress.total) * 100} />
+            </div>
+          )}
 
           {audioUrl && (
             <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-xl">

@@ -1,52 +1,55 @@
-## Plan: Full feature buildout
+## Phased buildout — everything you asked for, in 2 shippable batches
 
-Preserves all current features (sidebar, dark mode, STT, browser TTS, voice settings, history, dialects). Adds:
+You picked a lot (i18n, dialect voices, 500MB chunked uploads, admin+roles+reset+share, diarization+noise-cleanup, billing, PWA). Doing it all in one pass would produce a half-working app. I'll ship it in two clean batches.
 
-### 1. Authentication
-- Email/password + Google sign-in via Lovable Cloud managed auth
-- New `/auth` page (sign in / sign up tabs)
-- `profiles` table (display_name, avatar_url) with auto-create trigger on signup
-- `user_roles` table + `app_role` enum + `has_role()` security-definer function (for admin role later)
-- Auth state in a React context; sidebar shows user + sign out
-- Routes remain public so guests can still try features; history syncs only when signed in
+### Batch 1 — ships in this turn
 
-### 2. Cloud history
-- New `transcriptions` table (user_id, kind: stt|tts, text, dialect, audio_url nullable, created_at)
-- RLS: users see only their own rows
-- `src/lib/history.ts` becomes a thin wrapper that writes to DB when signed in, falls back to localStorage when not. History page reads from both, shows source badge.
+**1. i18n (English ↔ Afaan Oromo toggle)**
+- Lightweight `I18nProvider` with `t(key)` + `useI18n()` hook (no extra dependency).
+- Two dictionaries: `src/locales/en.ts`, `src/locales/om.ts` covering sidebar, page titles, buttons, toasts, dialogs.
+- Language toggle in sidebar footer; preference persisted in `localStorage` (`aon_lang`) and on `profiles.language` when signed in.
 
-### 3. Premium TTS (ElevenLabs)
-- Requires `ELEVENLABS_API_KEY` secret (will request via add_secret)
-- New edge function `tts-elevenlabs` → returns MP3 bytes
-- TTS page gets a "Voice engine" toggle: **Browser** (current) / **Premium (ElevenLabs)**
-- Premium mode shows curated multilingual voices (male/female), uses `eleven_multilingual_v2`
-- Generated MP3 is playable + downloadable
+**2. Curated premium voices per dialect**
+- `src/lib/voices.ts` maps each dialect (Arsi/Bale/Borana/Guji/Ittu/Karrayyu/Maccaa/Tuulama/Raya/Wallo/Jimma/Iluu/Kemise/Orma/Waata + General) to a recommended ElevenLabs voice + tuned stability/style.
+- TTS page auto-selects the matching voice when a dialect is chosen, user can override.
 
-### 4. Translation
-- New edge function `translate` using Lovable AI (`google/gemini-2.5-flash`)
-- Translate Afaan Oromo ↔ English ↔ Amharic
-- New `/translate` page (sidebar item) with source/target language selector and copy/save buttons
-- Inline "Translate" button on STT result and TTS input
+**3. 500MB upload with auto-chunking**
+- UI limit raised to 500MB, hint updated.
+- `src/lib/audioChunker.ts`: decodes via Web Audio, slices into ~60s mono 16kHz WAV chunks (≈2MB each), sends each to `transcribe`, stitches results with per-chunk offset for accurate SRT.
+- Progress bar (`Chunk 3 / 24`) + cancel button.
+- Server `transcribe` unchanged (already handles per-chunk audio).
 
-### 5. Exports (TXT / DOCX / PDF / SRT)
-- Add deps: `jspdf`, `docx`, `file-saver`
-- `src/lib/export.ts` with helpers: `exportTxt`, `exportDocx`, `exportPdf`, `exportSrt`
-- SRT generation: split transcribed text into ~6-word chunks, distribute timestamps across the original audio duration (captured during STT)
-- Export menu on STT result + History items
+**4. Authentication completeness**
+- `/reset-password` page (handles `type=recovery` hash, `supabase.auth.updateUser`).
+- "Forgot password?" link on `/auth` calling `resetPasswordForEmail` with redirect.
+- Enable `password_hibp_enabled` via `configure_auth`.
 
-### 6. Sidebar + routing
-- Add Translate, Sign in/Profile entries
-- Reorder: Home, Speech to Text, Text to Speech, Translate, History, Settings
+**5. Share links**
+- Migration adds `transcriptions.is_public boolean` + `share_token text unique` + public-read RLS policy when `is_public = true`.
+- "Share" button on History items / STT result → generates token, copies `/share/:token` URL.
+- New public `/share/:token` page renders the transcript read-only.
 
-### Technical details
-- Migration creates: `profiles`, `transcriptions`, `app_role` enum, `user_roles`, `has_role()`, `handle_new_user()` trigger, `update_updated_at_column()` trigger fn, RLS policies on all
-- Edge functions: `tts-elevenlabs`, `translate` (both `verify_jwt = false` default; CORS headers)
-- Google OAuth via `supabase--configure_social_auth` tool
-- All new colors stay in existing Earthy Oromo design tokens; no hard-coded colors
-- `useAuth()` hook + `AuthProvider` wrapping app; `onAuthStateChange` set up before `getSession()`
+**6. Admin dashboard**
+- `/admin` route gated by `has_role(auth.uid(),'admin')`.
+- Lists users (from `profiles`) + their transcription counts; can promote/demote roles via secure RPC `set_user_role(target_user_id, new_role)` that checks caller is admin.
+- Migration: RPC + INSERT/UPDATE/DELETE policies on `user_roles` restricted to admins via `has_role`.
 
-### Out of scope (per your answers)
-Admin dashboard, speaker recognition, noise reduction, offline mode — deferred.
+**7. PWA (manifest-only, install-to-home-screen)**
+- `public/manifest.webmanifest` with icons + `display: standalone`.
+- No service worker (avoids preview-iframe issues, per Lovable PWA guidance).
+- Meta tags in `index.html`.
 
-### One thing I need from you
-ElevenLabs API key (I'll request it after you approve this plan). Get one at elevenlabs.io → Profile → API Keys (free tier works).
+### Batch 2 — next turn (just say "continue")
+
+- **Diarization & better STT for long files**: ElevenLabs `scribe_v2` route in `transcribe` (toggle "Multi-speaker" in STT).
+- **Noise reduction**: in-browser pre-processing using `AudioContext` (high-pass + dynamics compressor) before chunking.
+- **Billing**: enable Lovable Stripe Payments (`recommend_payment_provider` → `enable_stripe_payments`) with "Free / Pro" tiers gating premium voices and >25MB uploads. Requires you to fill the Stripe enable form.
+
+### Out of scope (call out)
+- Real offline mode (cached transcripts) — skipped because service workers break the Lovable preview. Manifest-only install is included instead.
+- Live realtime mic transcription via ElevenLabs WebSocket — deferred until billing is in place.
+
+### Technical notes
+- All new colors stay on existing Earthy Oromo tokens.
+- Existing features (sidebar, dark mode, browser+premium TTS, history, translate, exports, SRT timing) are preserved untouched.
+- Migration in Batch 1 is one file (share columns + admin RPC + role policies).

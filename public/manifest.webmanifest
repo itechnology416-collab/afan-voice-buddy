@@ -1,0 +1,13 @@
+{
+  "name": "Afaan Oromo Natural Voice",
+  "short_name": "Afaan Oromo",
+  "description": "Afaan Oromo speech-to-text and natural text-to-speech",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1410",
+  "theme_color": "#c97b3c",
+  "icons": [
+    { "src": "/placeholder.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/placeholder.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
