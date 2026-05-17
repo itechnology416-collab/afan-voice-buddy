@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          language: string
           updated_at: string
           user_id: string
         }
@@ -28,6 +29,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          language?: string
           updated_at?: string
           user_id: string
         }
@@ -36,6 +38,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          language?: string
           updated_at?: string
           user_id?: string
         }
@@ -48,7 +51,9 @@ export type Database = {
           dialect: string | null
           duration_seconds: number | null
           id: string
+          is_public: boolean
           kind: string
+          share_token: string | null
           text: string
           user_id: string
         }
@@ -58,7 +63,9 @@ export type Database = {
           dialect?: string | null
           duration_seconds?: number | null
           id?: string
+          is_public?: boolean
           kind: string
+          share_token?: string | null
           text: string
           user_id: string
         }
@@ -68,7 +75,9 @@ export type Database = {
           dialect?: string | null
           duration_seconds?: number | null
           id?: string
+          is_public?: boolean
           kind?: string
+          share_token?: string | null
           text?: string
           user_id?: string
         }
@@ -106,6 +115,14 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      is_admin: { Args: never; Returns: boolean }
+      set_user_role: {
+        Args: {
+          new_role: Database["public"]["Enums"]["app_role"]
+          target_user_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {
