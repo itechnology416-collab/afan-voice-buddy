@@ -18,6 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { PREMIUM_VOICES as DIALECT_VOICES, DIALECT_VOICE_MAP, recommendVoiceForDialect, voiceById } from "@/lib/voices";
+import { DIALECTS } from "@/lib/dialects";
 
 const SAMPLE_TEXTS = [
   "Akkam jirta? Nagaatti.",
@@ -30,18 +32,7 @@ const SAMPLE_TEXTS = [
   "Guyyaan kee gaarii haa ta'u.",
 ];
 
-const PREMIUM_VOICES = [
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", gender: "female" },
-  { id: "FGY2WhTYpPnrIDTdsKH5", name: "Laura", gender: "female" },
-  { id: "Xb7hH8MSUJpSbSDYk0k2", name: "Alice", gender: "female" },
-  { id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", gender: "female" },
-  { id: "pFZP5JQG7iQjIQuC4Bku", name: "Lily", gender: "female" },
-  { id: "JBFqnCBsd6RMkjVDRZzb", name: "George", gender: "male" },
-  { id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger", gender: "male" },
-  { id: "IKne3meq5aSn9XLyUdCD", name: "Charlie", gender: "male" },
-  { id: "TX3LPaxmHKxFdv7VOQHJ", name: "Liam", gender: "male" },
-  { id: "onwK4e9ZLuTAKqWW03F9", name: "Daniel", gender: "male" },
-];
+const PREMIUM_VOICES = DIALECT_VOICES;
 
 type Engine = "browser" | "premium";
 
@@ -49,9 +40,20 @@ export const TextToSpeechConverter = () => {
   const [text, setText] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [engine, setEngine] = useState<Engine>("browser");
+  const [dialect, setDialect] = useState("general");
   const [premiumVoice, setPremiumVoice] = useState(PREMIUM_VOICES[0].id);
   const [premiumSpeed, setPremiumSpeed] = useState(1);
   const [premiumStability, setPremiumStability] = useState(0.55);
+
+  // Auto-pick voice + tuning when dialect changes
+  const applyDialect = (d: string) => {
+    setDialect(d);
+    const currentGender = voiceById(premiumVoice)?.gender ?? "female";
+    const v = recommendVoiceForDialect(d, currentGender);
+    setPremiumVoice(v.id);
+    setPremiumStability(v.stability);
+    setPremiumSpeed(v.speed);
+  };
   const [premiumBusy, setPremiumBusy] = useState(false);
   const [premiumPlaying, setPremiumPlaying] = useState(false);
   const [premiumAudioUrl, setPremiumAudioUrl] = useState<string | null>(null);
@@ -79,8 +81,13 @@ export const TextToSpeechConverter = () => {
     if (!text.trim()) return;
     setPremiumBusy(true);
     try {
+      const v = voiceById(premiumVoice);
       const { data, error: fnErr } = await supabase.functions.invoke("tts-elevenlabs", {
-        body: { text, voiceId: premiumVoice, speed: premiumSpeed, stability: premiumStability },
+        body: {
+          text, voiceId: premiumVoice,
+          speed: premiumSpeed, stability: premiumStability,
+          similarity: v?.similarity ?? 0.8, style: v?.style ?? 0.4,
+        },
       });
       // Edge-function level error (network / non-2xx)
       const payload = (data ?? {}) as { audioContent?: string; mimeType?: string; error?: string; retryable?: boolean; status?: number };
@@ -230,6 +237,17 @@ export const TextToSpeechConverter = () => {
                   />
                 ) : (
                   <>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Loqoda (Dialect)</label>
+                      <Select value={dialect} onValueChange={applyDialect}>
+                        <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {DIALECTS.map((d) => (
+                            <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Premium Voice</label>
                       <Select value={premiumVoice} onValueChange={setPremiumVoice}>
