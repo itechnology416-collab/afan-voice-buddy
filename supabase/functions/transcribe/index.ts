@@ -1,8 +1,31 @@
 // Afaan Oromo Speech-to-Text via Lovable AI (Gemini)
+// Enhanced with comprehensive native-speaker linguistic knowledge across all dialects.
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const DIALECT_GUIDE: Record<string, string> = {
+  general: "Standard written Afaan Oromo (Qubee). Neutral phonology.",
+  arsi: "Arsi dialect (Arsi/Bale zone). Slightly softer 'c' [tʃ], frequent use of '-tti', '-rraa'. Common words: 'maal jirta', 'akkam jirta'.",
+  bale: "Bale dialect. Close to Arsi; preserves long vowels strongly. Common copula '-dha' often heard as '-da'.",
+  borana: "Borana (southern Oromia/Kenya). Conservative phonology, strong glottal stops, retains '-ddhaa'. Lexicon: 'akkam', 'nagaa', 'fayyaa'. Pastoralist vocabulary (loon, re'ee).",
+  guji: "Guji dialect (Guji zone). Similar to Borana; distinct pitch accent; 'k' sometimes fricated.",
+  harar: "Harar / eastern (Ittu, Karrayyu, Aniyya). Loanwords from Harari/Somali/Arabic. 'q' is sharply ejective [qʼ].",
+  ittu: "Ittu (West Hararghe). Eastern features; some Amharic loans.",
+  karrayyu: "Karrayyu (pastoralist, eastern Shewa). Conservative; many cattle-related terms.",
+  wallaga: "Wallaga / Maccaa (western Oromia). 'dh' [ɗ] very crisp; 'ph' [pʼ] used in loans; common greeting 'attam jirta'.",
+  maccaa: "Maccaa cluster (Wallaga, Iluu, Jimma). Western pronunciation; 'h' often dropped intervocalically.",
+  shewa: "Shewa / Tuulama (central Oromia). Closest to media-standard; clear Qubee orthography.",
+  tuulama: "Tuulama (central Shewa). Standard educated register; 'q' fully ejective.",
+  raya: "Raya (Tigray/Amhara border). Heavy Amharic/Tigrinya contact; some vowel reduction.",
+  wallo: "Wallo (northern). Amharic loanwords frequent; '-cha/-chi' suffixes common.",
+  jimma: "Jimma (southwestern). Maccaa subgroup; coffee-region vocabulary.",
+  iluu: "Iluu Abbaa Booraa (southwestern). Maccaa subgroup; preserves geminates.",
+  kemise: "Kemise (Oromo of Wallo, Amhara region). Strong Amharic influence; code-switching common.",
+  orma: "Orma (Kenya, Tana River). Conservative southern variety; some Swahili loans.",
+  waata: "Waata (Kenya coastal). Hunter-gatherer community variety; loans from Mijikenda/Swahili.",
 };
 
 Deno.serve(async (req) => {
@@ -25,36 +48,45 @@ Deno.serve(async (req) => {
       });
     }
 
-    const dialectHint = dialect && dialect !== "general"
-      ? ` The speaker uses the ${dialect} dialect of Afaan Oromo.`
-      : "";
+    const dKey = (dialect || "general").toLowerCase();
+    const dialectHint = DIALECT_GUIDE[dKey] ?? DIALECT_GUIDE.general;
 
-    // Map common mime types -> short format identifier expected by input_audio
     const mt = (mimeType || "audio/webm").toLowerCase();
     let format = "webm";
     if (mt.includes("wav")) format = "wav";
     else if (mt.includes("mpeg") || mt.includes("mp3")) format = "mp3";
     else if (mt.includes("mp4") || mt.includes("m4a")) format = "mp4";
     else if (mt.includes("ogg")) format = "ogg";
-    else if (mt.includes("webm")) format = "webm";
+
+    const systemPrompt = [
+      "You are a native Afaan Oromo (Oromo language, ISO 639-3: orm) speech-to-text expert.",
+      "You natively understand ALL Afaan Oromo dialects: Borana, Guji, Arsi, Bale, Harar (Ittu/Karrayyu/Aniyya), Wallaga, Maccaa, Tuulama (Shewa), Raya, Wallo, Jimma, Iluu Abbaa Booraa, Kemise, Orma (Kenya), and Waata (Kenya).",
+      "Transcribe the audio EXACTLY in Afaan Oromo using standard Qubee (Latin) script as codified by the Oromia Education Bureau.",
+      "Phonology rules you MUST respect:",
+      "- Seven vowels: a, e, i, o, u — long vowels are doubled (aa, ee, ii, oo, uu) and ARE phonemically distinct (e.g. 'bara' year vs 'baraa' learn).",
+      "- Geminate (doubled) consonants are phonemic: kk, tt, pp, ff, ss, mm, nn, ll, rr, bb, dd, gg, cc, jj, ww, yy. Transcribe them faithfully.",
+      "- Ejectives & special consonants: q [kʼ], c [tʃʼ], x [tʼ], ph [pʼ], dh [ɗ], ny [ɲ], sh [ʃ], ch [tʃ].",
+      "- Glottal stop is written with apostrophe ' (e.g. har'a, sa'a, du'a).",
+      "- Do NOT use Amharic Fidel script. Latin Qubee only.",
+      "Orthography rules:",
+      "- Sentence-initial capital and proper nouns capitalized.",
+      "- Use ., ?, ! and , correctly.",
+      "- Write loanwords (from Amharic, English, Arabic, Swahili) in Qubee spelling, not original script.",
+      "- Common particles: -tti, -rraa, -dhaa, -iif, -keessa, -irra are attached without space.",
+      `Dialect context for this audio: ${dialectHint}`,
+      "If the speaker code-switches into Amharic or English, transliterate code-switched words into Qubee and keep them inline.",
+      "Add natural punctuation, sentence breaks, paragraph breaks for monologues.",
+      "Return ONLY the transcribed Afaan Oromo text. No translation, no explanations, no markdown.",
+    ].join("\n");
 
     const body = {
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-2.5-pro",
       messages: [
-        {
-          role: "system",
-          content:
-            "You are an expert Afaan Oromo (Oromo language) speech-to-text transcriber. " +
-            "Transcribe the audio EXACTLY into Afaan Oromo using the standard Qubee Latin script. " +
-            "Preserve long vowels (aa, ee, ii, oo, uu) and geminated consonants (kk, ff, jj, ll, mm, nn). " +
-            "Add proper punctuation, capitalization, and natural sentence breaks. " +
-            "Return ONLY the transcribed text, no explanations." +
-            dialectHint,
-        },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [
-            { type: "text", text: "Transcribe this Afaan Oromo audio:" },
+            { type: "text", text: "Transcribe this Afaan Oromo audio in Qubee script:" },
             { type: "input_audio", input_audio: { data: audio, format } },
           ],
         },
@@ -90,7 +122,7 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("transcribe error:", err);
-    return new Response(JSON.stringify({ error: String(err?.message ?? err) }), {
+    return new Response(JSON.stringify({ error: String((err as Error)?.message ?? err) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
