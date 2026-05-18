@@ -3,20 +3,21 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mic, Square, Upload, Loader2, Copy, Trash2, FileAudio, FileDown, FileText, FileType, Subtitles, Languages } from "lucide-react";
+import { Mic, Square, Upload, Loader2, Copy, Trash2, FileAudio, FileDown, FileText, FileType, Subtitles, Languages, Users, Wand2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { supabase } from "@/integrations/supabase/client";
 import { addHistory } from "@/lib/history";
 import { DIALECTS } from "@/lib/dialects";
 import { cn } from "@/lib/utils";
-import { exportTxt, exportDocx, exportPdf, exportSrt } from "@/lib/export";
+import { exportTxt, exportDocx, exportPdf, exportSrt, exportSrtFromWords, type TimedWord } from "@/lib/export";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
-import { chunkAudioFile } from "@/lib/audioChunker";
+import { chunkAudioFile, cleanAudioBlob } from "@/lib/audioChunker";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 
 const ALLOWED = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a", "audio/m4a", "audio/webm", "audio/ogg"];
 
