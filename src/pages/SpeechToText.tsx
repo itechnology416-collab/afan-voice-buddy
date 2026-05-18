@@ -55,6 +55,9 @@ const SpeechToText = () => {
   const [transcribing, setTranscribing] = useState(false);
   const [text, setText] = useState("");
   const [dialect, setDialect] = useState("general");
+  const [diarize, setDiarize] = useState(false);
+  const [denoise, setDenoise] = useState(true);
+  const [words, setWords] = useState<TimedWord[]>([]);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | undefined>(undefined);
   const [levels, setLevels] = useState<number[]>(Array(24).fill(4));
