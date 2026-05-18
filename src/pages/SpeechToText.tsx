@@ -336,6 +336,29 @@ const SpeechToText = () => {
             </Select>
           </div>
 
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="flex items-center justify-between p-3 bg-muted/40 rounded-xl">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Multi-speaker</p>
+                  <p className="text-xs text-muted-foreground">ElevenLabs scribe_v2 diarization</p>
+                </div>
+              </div>
+              <Switch checked={diarize} onCheckedChange={setDiarize} disabled={transcribing} />
+            </div>
+            <div className="flex items-center justify-between p-3 bg-muted/40 rounded-xl">
+              <div className="flex items-center gap-2">
+                <Wand2 className="w-4 h-4 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Noise reduction</p>
+                  <p className="text-xs text-muted-foreground">Cleanup before transcribing</p>
+                </div>
+              </div>
+              <Switch checked={denoise} onCheckedChange={setDenoise} disabled={transcribing} />
+            </div>
+          </div>
+
           <div className="flex items-end justify-center gap-1 h-16 bg-muted/40 rounded-xl p-3">
             {levels.map((h, i) => (
               <div
