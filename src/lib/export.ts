@@ -65,6 +65,54 @@ const fmt = (s: number) => {
   return `${hh}:${mm}:${ss},${String(ms).padStart(3, "0")}`;
 };
 
+// SRT built from real word-level timestamps (e.g. ElevenLabs scribe_v2).
+// Groups consecutive words by speaker and into <=42-char / <=6.0s cues.
+export interface TimedWord {
+  text: string;
+  start: number;
+  end: number;
+  speaker?: string;
+  type?: string; // "word" | "spacing" | "audio_event"
+}
+
+export function exportSrtFromWords(words: TimedWord[], base = "subtitles") {
+  const real = words.filter((w) => (w.type ?? "word") === "word" && w.text?.trim());
+  if (!real.length) return;
+
+  const maxChars = 42;
+  const maxDur = 6.0;
+  type Cue = { start: number; end: number; speaker?: string; text: string };
+  const cues: Cue[] = [];
+  let cur: Cue | null = null;
+
+  for (const w of real) {
+    if (
+      !cur ||
+      w.speaker !== cur.speaker ||
+      cur.text.length + w.text.length + 1 > maxChars ||
+      w.end - cur.start > maxDur
+    ) {
+      if (cur) cues.push(cur);
+      cur = { start: w.start, end: w.end, speaker: w.speaker, text: w.text };
+    } else {
+      cur.text += " " + w.text;
+      cur.end = w.end;
+    }
+  }
+  if (cur) cues.push(cur);
+
+  const lines: string[] = [];
+  cues.forEach((c, i) => {
+    lines.push(String(i + 1));
+    lines.push(`${fmt(c.start)} --> ${fmt(c.end)}`);
+    const speakerLabel = c.speaker ? `[${c.speaker}] ` : "";
+    lines.push(`${speakerLabel}${c.text}`);
+    lines.push("");
+  });
+  const blob = new Blob([lines.join("\n")], { type: "application/x-subrip;charset=utf-8" });
+  saveAs(blob, `${base}-${stamp()}.srt`);
+}
+
 // Count Afaan Oromo syllables: vowel groups (aa/ee/ii/oo/uu count as 1).
 const syllableWeight = (s: string) => {
   const lower = s.toLowerCase();
