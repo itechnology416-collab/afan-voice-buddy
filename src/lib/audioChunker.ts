@@ -1,17 +1,22 @@
-// Decode any audio file with Web Audio, downmix to mono 16kHz,
-// then slice into ~60-second WAV chunks (≈1.9MB each, well under any AI payload cap).
+// Decode audio with Web Audio, optional noise cleanup (high-pass + compressor + normalize),
+// downmix to mono 16kHz, then slice into ~60-second WAV chunks (≈1.9MB each).
 // Each chunk knows its start offset so the caller can stitch SRTs accurately.
 
 export interface AudioChunk {
-  blob: Blob;          // audio/wav, mono, 16kHz
-  startSec: number;    // offset inside the original audio
-  durationSec: number; // chunk duration in seconds
+  blob: Blob;
+  startSec: number;
+  durationSec: number;
   index: number;
   total: number;
 }
 
+export interface ChunkOptions {
+  denoise?: boolean;
+  chunkSeconds?: number;
+}
+
 const TARGET_SR = 16000;
-const CHUNK_SECONDS = 60;
+const DEFAULT_CHUNK_SECONDS = 60;
 
 function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
@@ -24,8 +29,8 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   writeStr(8, "WAVE");
   writeStr(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);          // PCM
-  view.setUint16(22, 1, true);          // mono
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * 2, true);
   view.setUint16(32, 2, true);
@@ -34,13 +39,12 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   view.setUint32(40, samples.length * 2, true);
   let off = 44;
   for (let i = 0; i < samples.length; i++, off += 2) {
-    let s = Math.max(-1, Math.min(1, samples[i]));
+    const s = Math.max(-1, Math.min(1, samples[i]));
     view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
   }
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-// Linear-interpolation resample (sufficient for speech transcription).
 function resample(input: Float32Array, fromRate: number, toRate: number): Float32Array {
   if (fromRate === toRate) return input;
   const ratio = fromRate / toRate;
@@ -69,11 +73,67 @@ function downmixToMono(channels: Float32Array[]): Float32Array {
   return out;
 }
 
-export async function chunkAudioFile(file: Blob): Promise<AudioChunk[]> {
+// Peak-normalize to -1 dBFS to recover gain after compression.
+function normalize(buf: Float32Array, targetPeak = 0.89) {
+  let peak = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const a = Math.abs(buf[i]);
+    if (a > peak) peak = a;
+  }
+  if (peak < 1e-4) return buf;
+  const g = targetPeak / peak;
+  if (g > 0.99 && g < 1.01) return buf;
+  const out = new Float32Array(buf.length);
+  for (let i = 0; i < buf.length; i++) out[i] = buf[i] * g;
+  return out;
+}
+
+// Render mono buffer through high-pass (80Hz) + dynamics compressor for cleanup.
+async function denoiseRender(monoIn: Float32Array, sampleRate: number): Promise<Float32Array> {
+  const OfflineCtx: typeof OfflineAudioContext =
+    (window as unknown as { OfflineAudioContext: typeof OfflineAudioContext }).OfflineAudioContext ||
+    (window as unknown as { webkitOfflineAudioContext: typeof OfflineAudioContext }).webkitOfflineAudioContext;
+  if (!OfflineCtx) return monoIn;
+
+  const ctx = new OfflineCtx(1, monoIn.length, sampleRate);
+  const ab = ctx.createBuffer(1, monoIn.length, sampleRate);
+  ab.copyToChannel(monoIn, 0);
+  const src = ctx.createBufferSource();
+  src.buffer = ab;
+
+  // High-pass removes mic rumble/AC hum below ~80Hz.
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 85;
+  hp.Q.value = 0.7;
+
+  // Notch around 50/60Hz already covered by HP; presence boost helps speech.
+  const presence = ctx.createBiquadFilter();
+  presence.type = "peaking";
+  presence.frequency.value = 2800;
+  presence.gain.value = 3;
+  presence.Q.value = 1;
+
+  // Compressor evens out volume swings (good for noisy recordings).
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -28;
+  comp.knee.value = 24;
+  comp.ratio.value = 3;
+  comp.attack.value = 0.003;
+  comp.release.value = 0.25;
+
+  src.connect(hp).connect(presence).connect(comp).connect(ctx.destination);
+  src.start();
+  const rendered = await ctx.startRendering();
+  return normalize(rendered.getChannelData(0));
+}
+
+export async function chunkAudioFile(file: Blob, opts: ChunkOptions = {}): Promise<AudioChunk[]> {
+  const chunkSeconds = opts.chunkSeconds ?? DEFAULT_CHUNK_SECONDS;
   const arrayBuf = await file.arrayBuffer();
-  // Use OfflineAudioContext to decode without playback
   const AudioCtx: typeof AudioContext =
-    (window as any).AudioContext || (window as any).webkitAudioContext;
+    (window as unknown as { AudioContext: typeof AudioContext }).AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const tmpCtx = new AudioCtx();
   let audioBuf: AudioBuffer;
   try {
@@ -86,10 +146,17 @@ export async function chunkAudioFile(file: Blob): Promise<AudioChunk[]> {
   for (let c = 0; c < audioBuf.numberOfChannels; c++) {
     channels.push(audioBuf.getChannelData(c));
   }
-  const mono = downmixToMono(channels);
+  let mono = downmixToMono(channels);
+  if (opts.denoise) {
+    try {
+      mono = await denoiseRender(mono, audioBuf.sampleRate);
+    } catch (e) {
+      console.warn("Noise reduction skipped:", e);
+    }
+  }
   const resampled = resample(mono, audioBuf.sampleRate, TARGET_SR);
 
-  const samplesPerChunk = TARGET_SR * CHUNK_SECONDS;
+  const samplesPerChunk = TARGET_SR * chunkSeconds;
   const totalChunks = Math.max(1, Math.ceil(resampled.length / samplesPerChunk));
   const chunks: AudioChunk[] = [];
   for (let i = 0; i < totalChunks; i++) {
@@ -105,4 +172,28 @@ export async function chunkAudioFile(file: Blob): Promise<AudioChunk[]> {
     });
   }
   return chunks;
+}
+
+// Clean a single short blob (e.g. a microphone recording) for diarization paths
+// where chunking isn't needed. Returns a 16kHz mono WAV blob.
+export async function cleanAudioBlob(file: Blob, denoise = true): Promise<Blob> {
+  const arrayBuf = await file.arrayBuffer();
+  const AudioCtx: typeof AudioContext =
+    (window as unknown as { AudioContext: typeof AudioContext }).AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const tmpCtx = new AudioCtx();
+  let audioBuf: AudioBuffer;
+  try {
+    audioBuf = await tmpCtx.decodeAudioData(arrayBuf.slice(0));
+  } finally {
+    tmpCtx.close().catch(() => {});
+  }
+  const chans: Float32Array[] = [];
+  for (let c = 0; c < audioBuf.numberOfChannels; c++) chans.push(audioBuf.getChannelData(c));
+  let mono = downmixToMono(chans);
+  if (denoise) {
+    try { mono = await denoiseRender(mono, audioBuf.sampleRate); } catch { /* noop */ }
+  }
+  const resampled = resample(mono, audioBuf.sampleRate, TARGET_SR);
+  return encodeWav(resampled, TARGET_SR);
 }
