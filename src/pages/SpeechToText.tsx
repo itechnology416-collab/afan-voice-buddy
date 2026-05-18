@@ -156,29 +156,58 @@ const SpeechToText = () => {
     stopMeter();
   };
 
+  // Call the appropriate edge function for a single audio blob.
+  // Returns { text, words? } so callers can stitch chunked results.
+  const callTranscribe = async (
+    blob: Blob,
+    offsetSec = 0,
+  ): Promise<{ text: string; words: TimedWord[] }> => {
+    const base64 = await blobToBase64(blob);
+    const fn = diarize ? "transcribe-diarize" : "transcribe";
+    const body = diarize
+      ? { audio: base64, mimeType: blob.type, diarize: true }
+      : { audio: base64, mimeType: blob.type, dialect };
+    const { data, error } = await supabase.functions.invoke(fn, { body });
+    if (error) throw error;
+    const result = (data as { text?: string; words?: TimedWord[]; error?: string }) ?? {};
+    if (result.error) throw new Error(result.error);
+    const ws: TimedWord[] = (result.words ?? []).map((w) => ({
+      ...w,
+      start: (w.start ?? 0) + offsetSec,
+      end: (w.end ?? 0) + offsetSec,
+    }));
+    const text =
+      result.text?.trim() ??
+      ws.filter((w) => (w.type ?? "word") === "word").map((w) => w.text).join(" ").trim();
+    return { text, words: ws };
+  };
+
   const transcribeBlob = async (blob: Blob, dur?: number) => {
     setTranscribing(true);
+    setWords([]);
     try {
-      const base64 = await blobToBase64(blob);
-      const { data, error } = await supabase.functions.invoke("transcribe", {
-        body: { audio: base64, mimeType: blob.type, dialect },
-      });
-      if (error) throw error;
-      const result = (data as { text?: string; error?: string }) ?? {};
-      if (result.error) throw new Error(result.error);
-      const transcript = result.text ?? "";
+      // For diarization or noise reduction we send a cleaned 16kHz mono WAV.
+      const sendBlob = diarize || denoise ? await cleanAudioBlob(blob, denoise) : blob;
+      const { text: transcript, words: ws } = await callTranscribe(sendBlob);
       setText(transcript);
+      setWords(ws);
       if (transcript) {
         await addHistory({ kind: "stt", text: transcript, dialect, durationSeconds: dur });
         toast({ title: "Transcription complete" });
       } else {
         toast({ title: "No speech detected", variant: "destructive" });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Please try again.";
       toast({
         title: "Transcription failed",
-        description: err?.message ?? "Please try again.",
+        description: msg,
         variant: "destructive",
+        action: (
+          <ToastAction altText="Retry" onClick={() => transcribeBlob(blob, dur)}>
+            Retry
+          </ToastAction>
+        ),
       });
     } finally {
       setTranscribing(false);
@@ -200,29 +229,27 @@ const SpeechToText = () => {
     const d = await getAudioDuration(file);
     setDuration(d);
 
-    // Small files: single-shot. Large files: decode + chunk + stitch.
+    // Small files: single-shot (with optional denoise/diarize).
     if (file.size <= 18 * 1024 * 1024) {
       await transcribeBlob(file, d);
       return;
     }
     setTranscribing(true);
     setText("");
+    setWords([]);
     try {
-      const chunks = await chunkAudioFile(file);
+      const chunks = await chunkAudioFile(file, { denoise });
       const parts: string[] = [];
+      const allWords: TimedWord[] = [];
       const totalDur = chunks.reduce((a, c) => a + c.durationSec, 0);
       setDuration(totalDur);
       for (const c of chunks) {
         setChunkProgress({ current: c.index + 1, total: c.total });
-        const base64 = await blobToBase64(c.blob);
-        const { data, error } = await supabase.functions.invoke("transcribe", {
-          body: { audio: base64, mimeType: "audio/wav", dialect },
-        });
-        if (error) throw error;
-        const r = (data as { text?: string; error?: string }) ?? {};
-        if (r.error) throw new Error(r.error);
-        if (r.text) parts.push(r.text.trim());
+        const { text: t, words: ws } = await callTranscribe(c.blob, c.startSec);
+        if (t) parts.push(t);
+        if (ws.length) allWords.push(...ws);
         setText(parts.join(" "));
+        setWords([...allWords]);
       }
       const transcript = parts.join(" ").trim();
       if (transcript) {
@@ -231,8 +258,18 @@ const SpeechToText = () => {
       } else {
         toast({ title: "No speech detected", variant: "destructive" });
       }
-    } catch (err: any) {
-      toast({ title: "Transcription failed", description: err?.message ?? "Please try again.", variant: "destructive" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Please try again.";
+      toast({
+        title: "Transcription failed",
+        description: msg,
+        variant: "destructive",
+        action: (
+          <ToastAction altText="Retry" onClick={() => handleFile(file)}>
+            Retry
+          </ToastAction>
+        ),
+      });
     } finally {
       setChunkProgress(null);
       setTranscribing(false);
