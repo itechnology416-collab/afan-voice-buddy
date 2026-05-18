@@ -97,7 +97,7 @@ async function denoiseRender(monoIn: Float32Array, sampleRate: number): Promise<
 
   const ctx = new OfflineCtx(1, monoIn.length, sampleRate);
   const ab = ctx.createBuffer(1, monoIn.length, sampleRate);
-  ab.copyToChannel(monoIn, 0);
+  ab.getChannelData(0).set(monoIn);
   const src = ctx.createBufferSource();
   src.buffer = ab;
 
