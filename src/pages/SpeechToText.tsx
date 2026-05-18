@@ -472,9 +472,14 @@ const SpeechToText = () => {
                     <DropdownMenuItem onClick={() => safeExport(".srt", () => exportSrt(text, duration))}>
                       <Subtitles className="w-4 h-4 mr-2" /> .srt subtitles
                     </DropdownMenuItem>
+                    {words.length > 0 && (
+                      <DropdownMenuItem onClick={() => safeExport(".srt (timed)", () => exportSrtFromWords(words))}>
+                        <Subtitles className="w-4 h-4 mr-2" /> .srt (word-timed{diarize ? " + speakers" : ""})
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button variant="ghost" size="sm" onClick={() => setText("")} disabled={!text}>
+                <Button variant="ghost" size="sm" onClick={() => { setText(""); setWords([]); }} disabled={!text}>
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
@@ -485,6 +490,25 @@ const SpeechToText = () => {
               placeholder="Transcribed Afaan Oromo text will appear here..."
               className="min-h-[180px] resize-none bg-background"
             />
+            {diarize && words.length > 0 && (
+              <div className="space-y-1.5 max-h-64 overflow-y-auto p-3 bg-muted/30 rounded-xl">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Speakers</p>
+                {Object.entries(
+                  words
+                    .filter((w) => (w.type ?? "word") === "word")
+                    .reduce<Record<string, string[]>>((acc, w) => {
+                      const k = w.speaker ?? "speaker_0";
+                      (acc[k] ||= []).push(w.text);
+                      return acc;
+                    }, {})
+                ).map(([speaker, ws]) => (
+                  <p key={speaker} className="text-sm">
+                    <span className="font-semibold text-primary">[{speaker}]</span>{" "}
+                    <span>{ws.join(" ")}</span>
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </Card>
