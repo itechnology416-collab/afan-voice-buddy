@@ -14,6 +14,7 @@ import Admin from "./pages/Admin";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Share from "./pages/Share";
+import Knowledge from "./pages/Knowledge";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./contexts/AuthContext";
 import { I18nProvider } from "./contexts/I18nContext";
@@ -38,6 +39,7 @@ const App = () => (
                 <Route path="/text-to-speech" element={<TextToSpeech />} />
                 <Route path="/translate" element={<TranslatePage />} />
                 <Route path="/history" element={<HistoryPage />} />
+                <Route path="/knowledge" element={<Knowledge />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/settings" element={<Settings />} />
               </Route>
