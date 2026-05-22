@@ -1,4 +1,4 @@
-import { Home, Mic, Volume2, History, Settings, Languages, LogIn, LogOut, User as UserIcon, Shield } from "lucide-react";
+import { Home, Mic, Volume2, History, Settings, Languages, LogIn, LogOut, User as UserIcon, Shield, BookOpen } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
@@ -30,6 +30,7 @@ export function AppSidebar() {
     { title: t("nav.stt"), url: "/speech-to-text", icon: Mic },
     { title: t("nav.tts"), url: "/text-to-speech", icon: Volume2 },
     { title: t("nav.translate"), url: "/translate", icon: Languages },
+    { title: "Knowledge", url: "/knowledge", icon: BookOpen },
     { title: t("nav.history"), url: "/history", icon: History },
     { title: t("nav.settings"), url: "/settings", icon: Settings },
   ];
