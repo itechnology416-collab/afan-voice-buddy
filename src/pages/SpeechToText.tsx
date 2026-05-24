@@ -81,6 +81,7 @@ const SpeechToText = () => {
   const rafRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordStartRef = useRef<number>(0);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     return () => {
