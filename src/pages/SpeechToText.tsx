@@ -523,6 +523,22 @@ const SpeechToText = () => {
               placeholder="Transcribed Afaan Oromo text will appear here..."
               className="min-h-[180px] resize-none bg-background"
             />
+            {words.length > 0 && (
+              <TranscriptReviewer
+                words={words}
+                audioEl={audioElRef.current}
+                onChange={(next) => {
+                  setWords(next);
+                  // Rebuild text from corrected words so all exports stay in sync.
+                  const rebuilt = next
+                    .filter((w) => (w.type ?? "word") === "word")
+                    .map((w) => w.text)
+                    .join(" ")
+                    .trim();
+                  if (rebuilt) setText(rebuilt);
+                }}
+              />
+            )}
             {diarize && words.length > 0 && (
               <div className="space-y-1.5 max-h-64 overflow-y-auto p-3 bg-muted/30 rounded-xl">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Speakers</p>
