@@ -105,9 +105,56 @@ Deno.serve(async (req) => {
     if (!aiRes.ok) {
       const errText = await aiRes.text();
       console.error("AI gateway error:", aiRes.status, errText);
+      // Fallback to ElevenLabs scribe_v2 on credit/rate/server errors.
+      if (aiRes.status === 402 || aiRes.status === 429 || aiRes.status >= 500) {
+        const elKey = Deno.env.get("ELEVENLABS_API_KEY");
+        if (elKey) {
+          try {
+            const bin = atob(audio);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const ext = format === "mpeg" ? "mp3" : format;
+            const fd = new FormData();
+            fd.append("file", new Blob([bytes], { type: mt }), `audio.${ext}`);
+            fd.append("model_id", "scribe_v2");
+            fd.append("diarize", "false");
+            fd.append("language_code", "orm");
+            const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+              method: "POST",
+              headers: { "xi-api-key": elKey },
+              body: fd,
+            });
+            if (r.ok) {
+              const d = await r.json();
+              const text = (d?.text ?? "").trim();
+              return new Response(JSON.stringify({ text, fallback: "elevenlabs" }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              });
+            }
+            // retry without language_code (auto-detect)
+            const fd2 = new FormData();
+            fd2.append("file", new Blob([bytes], { type: mt }), `audio.${ext}`);
+            fd2.append("model_id", "scribe_v2");
+            fd2.append("diarize", "false");
+            const r2 = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+              method: "POST", headers: { "xi-api-key": elKey }, body: fd2,
+            });
+            if (r2.ok) {
+              const d = await r2.json();
+              const text = (d?.text ?? "").trim();
+              return new Response(JSON.stringify({ text, fallback: "elevenlabs" }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              });
+            }
+            console.error("ElevenLabs fallback failed:", r2.status, await r2.text());
+          } catch (e) {
+            console.error("ElevenLabs fallback exception:", e);
+          }
+        }
+      }
       let userMsg = "Transcription failed.";
       if (aiRes.status === 429) userMsg = "Rate limit reached. Please try again shortly.";
-      if (aiRes.status === 402) userMsg = "AI credits exhausted. Add credits to continue.";
+      if (aiRes.status === 402) userMsg = "AI credits exhausted — add Lovable AI credits or set an ElevenLabs API key for fallback.";
       return new Response(JSON.stringify({ error: userMsg, detail: errText }), {
         status: aiRes.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
