@@ -228,8 +228,12 @@ const SpeechToText = () => {
       toast({ title: "File too large", description: "Max 500MB.", variant: "destructive" });
       return;
     }
-    if (!ALLOWED.includes(file.type) && !/\.(mp3|wav|m4a|webm|ogg|mp4)$/i.test(file.name)) {
-      toast({ title: "Unsupported file", description: "Use MP3, WAV, M4A, WEBM, or OGG.", variant: "destructive" });
+    if (!isAcceptedFile(file)) {
+      toast({
+        title: "Unsupported file",
+        description: "Use a common audio (MP3, WAV, M4A, OGG, FLAC…) or video (MP4, MOV, WEBM, MKV…) file.",
+        variant: "destructive",
+      });
       return;
     }
     const url = URL.createObjectURL(file);
@@ -238,9 +242,26 @@ const SpeechToText = () => {
     const d = await getAudioDuration(file);
     setDuration(d);
 
-    // Small files: single-shot (with optional denoise/diarize).
-    if (file.size <= 18 * 1024 * 1024) {
+    const video = isVideoFile(file);
+    // Small files: single-shot. Video files always go through cleanAudioBlob
+    // so the edge functions get a plain WAV audio track.
+    if (file.size <= 18 * 1024 * 1024 && !video) {
       await transcribeBlob(file, d);
+      return;
+    }
+    if (video && file.size <= 18 * 1024 * 1024) {
+      setTranscribing(true);
+      setText("");
+      setWords([]);
+      try {
+        const wav = await cleanAudioBlob(file, denoise);
+        await transcribeBlob(wav, d);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Please try again.";
+        toast({ title: "Couldn't read video", description: msg, variant: "destructive" });
+      } finally {
+        setTranscribing(false);
+      }
       return;
     }
     setTranscribing(true);
