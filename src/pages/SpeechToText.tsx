@@ -18,8 +18,17 @@ import { useNavigate } from "react-router-dom";
 import { chunkAudioFile, cleanAudioBlob } from "@/lib/audioChunker";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
+import TranscriptReviewer from "@/components/TranscriptReviewer";
 
-const ALLOWED = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a", "audio/m4a", "audio/webm", "audio/ogg"];
+const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|webm|amr|wma|aiff|aif|3gp|3gpp)$/i;
+const VIDEO_EXT = /\.(mp4|mov|m4v|webm|mkv|avi|wmv|flv|3gp|3gpp|mpeg|mpg|ts|m2ts|ogv)$/i;
+const isVideoFile = (f: File) =>
+  f.type.startsWith("video/") || VIDEO_EXT.test(f.name);
+const isAcceptedFile = (f: File) =>
+  f.type.startsWith("audio/") ||
+  f.type.startsWith("video/") ||
+  AUDIO_EXT.test(f.name) ||
+  VIDEO_EXT.test(f.name);
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
