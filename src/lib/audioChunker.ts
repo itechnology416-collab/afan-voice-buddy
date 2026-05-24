@@ -128,19 +128,26 @@ async function denoiseRender(monoIn: Float32Array, sampleRate: number): Promise<
   return normalize(rendered.getChannelData(0));
 }
 
-export async function chunkAudioFile(file: Blob, opts: ChunkOptions = {}): Promise<AudioChunk[]> {
-  const chunkSeconds = opts.chunkSeconds ?? DEFAULT_CHUNK_SECONDS;
+async function decodeAny(file: Blob): Promise<AudioBuffer> {
   const arrayBuf = await file.arrayBuffer();
   const AudioCtx: typeof AudioContext =
     (window as unknown as { AudioContext: typeof AudioContext }).AudioContext ||
     (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const tmpCtx = new AudioCtx();
-  let audioBuf: AudioBuffer;
   try {
-    audioBuf = await tmpCtx.decodeAudioData(arrayBuf.slice(0));
+    return await tmpCtx.decodeAudioData(arrayBuf.slice(0));
+  } catch (e) {
+    throw new Error(
+      "This audio/video format can't be decoded in the browser. Try MP3, WAV, M4A, OGG, MP4, or WEBM."
+    );
   } finally {
     tmpCtx.close().catch(() => {});
   }
+}
+
+export async function chunkAudioFile(file: Blob, opts: ChunkOptions = {}): Promise<AudioChunk[]> {
+  const chunkSeconds = opts.chunkSeconds ?? DEFAULT_CHUNK_SECONDS;
+  const audioBuf = await decodeAny(file);
 
   const channels: Float32Array[] = [];
   for (let c = 0; c < audioBuf.numberOfChannels; c++) {
@@ -177,17 +184,7 @@ export async function chunkAudioFile(file: Blob, opts: ChunkOptions = {}): Promi
 // Clean a single short blob (e.g. a microphone recording) for diarization paths
 // where chunking isn't needed. Returns a 16kHz mono WAV blob.
 export async function cleanAudioBlob(file: Blob, denoise = true): Promise<Blob> {
-  const arrayBuf = await file.arrayBuffer();
-  const AudioCtx: typeof AudioContext =
-    (window as unknown as { AudioContext: typeof AudioContext }).AudioContext ||
-    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  const tmpCtx = new AudioCtx();
-  let audioBuf: AudioBuffer;
-  try {
-    audioBuf = await tmpCtx.decodeAudioData(arrayBuf.slice(0));
-  } finally {
-    tmpCtx.close().catch(() => {});
-  }
+  const audioBuf = await decodeAny(file);
   const chans: Float32Array[] = [];
   for (let c = 0; c < audioBuf.numberOfChannels; c++) chans.push(audioBuf.getChannelData(c));
   let mono = downmixToMono(chans);

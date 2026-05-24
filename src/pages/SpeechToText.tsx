@@ -18,8 +18,17 @@ import { useNavigate } from "react-router-dom";
 import { chunkAudioFile, cleanAudioBlob } from "@/lib/audioChunker";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
+import TranscriptReviewer from "@/components/TranscriptReviewer";
 
-const ALLOWED = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a", "audio/m4a", "audio/webm", "audio/ogg"];
+const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|webm|amr|wma|aiff|aif|3gp|3gpp)$/i;
+const VIDEO_EXT = /\.(mp4|mov|m4v|webm|mkv|avi|wmv|flv|3gp|3gpp|mpeg|mpg|ts|m2ts|ogv)$/i;
+const isVideoFile = (f: File) =>
+  f.type.startsWith("video/") || VIDEO_EXT.test(f.name);
+const isAcceptedFile = (f: File) =>
+  f.type.startsWith("audio/") ||
+  f.type.startsWith("video/") ||
+  AUDIO_EXT.test(f.name) ||
+  VIDEO_EXT.test(f.name);
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -72,6 +81,7 @@ const SpeechToText = () => {
   const rafRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordStartRef = useRef<number>(0);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -219,8 +229,12 @@ const SpeechToText = () => {
       toast({ title: "File too large", description: "Max 500MB.", variant: "destructive" });
       return;
     }
-    if (!ALLOWED.includes(file.type) && !/\.(mp3|wav|m4a|webm|ogg|mp4)$/i.test(file.name)) {
-      toast({ title: "Unsupported file", description: "Use MP3, WAV, M4A, WEBM, or OGG.", variant: "destructive" });
+    if (!isAcceptedFile(file)) {
+      toast({
+        title: "Unsupported file",
+        description: "Use a common audio (MP3, WAV, M4A, OGG, FLAC…) or video (MP4, MOV, WEBM, MKV…) file.",
+        variant: "destructive",
+      });
       return;
     }
     const url = URL.createObjectURL(file);
@@ -229,9 +243,26 @@ const SpeechToText = () => {
     const d = await getAudioDuration(file);
     setDuration(d);
 
-    // Small files: single-shot (with optional denoise/diarize).
-    if (file.size <= 18 * 1024 * 1024) {
+    const video = isVideoFile(file);
+    // Small files: single-shot. Video files always go through cleanAudioBlob
+    // so the edge functions get a plain WAV audio track.
+    if (file.size <= 18 * 1024 * 1024 && !video) {
       await transcribeBlob(file, d);
+      return;
+    }
+    if (video && file.size <= 18 * 1024 * 1024) {
+      setTranscribing(true);
+      setText("");
+      setWords([]);
+      try {
+        const wav = await cleanAudioBlob(file, denoise);
+        await transcribeBlob(wav, d);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Please try again.";
+        toast({ title: "Couldn't read video", description: msg, variant: "destructive" });
+      } finally {
+        setTranscribing(false);
+      }
       return;
     }
     setTranscribing(true);
@@ -407,7 +438,7 @@ const SpeechToText = () => {
           >
             <input
               type="file"
-              accept="audio/*"
+              accept="audio/*,video/*"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -416,8 +447,10 @@ const SpeechToText = () => {
               }}
             />
             <Upload className="w-7 h-7 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-sm font-medium">Drop audio file or click to upload</p>
-            <p className="text-xs text-muted-foreground mt-1">MP3 · WAV · M4A · WEBM · OGG (max 500MB · auto-chunked)</p>
+            <p className="text-sm font-medium">Drop audio or video file or click to upload</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Audio: MP3 · WAV · M4A · AAC · OGG · OPUS · FLAC · WEBM · AMR · WMA · AIFF — Video: MP4 · MOV · WEBM · MKV · AVI · WMV · FLV · 3GP · MPEG (max 500MB · auto-chunked)
+            </p>
           </label>
 
           {chunkProgress && (
@@ -432,7 +465,7 @@ const SpeechToText = () => {
           {audioUrl && (
             <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-xl">
               <FileAudio className="w-5 h-5 text-primary shrink-0" />
-              <audio src={audioUrl} controls className="flex-1 h-9" />
+              <audio ref={audioElRef} src={audioUrl} controls className="flex-1 h-9" />
             </div>
           )}
 
@@ -490,6 +523,22 @@ const SpeechToText = () => {
               placeholder="Transcribed Afaan Oromo text will appear here..."
               className="min-h-[180px] resize-none bg-background"
             />
+            {words.length > 0 && (
+              <TranscriptReviewer
+                words={words}
+                audioEl={audioElRef.current}
+                onChange={(next) => {
+                  setWords(next);
+                  // Rebuild text from corrected words so all exports stay in sync.
+                  const rebuilt = next
+                    .filter((w) => (w.type ?? "word") === "word")
+                    .map((w) => w.text)
+                    .join(" ")
+                    .trim();
+                  if (rebuilt) setText(rebuilt);
+                }}
+              />
+            )}
             {diarize && words.length > 0 && (
               <div className="space-y-1.5 max-h-64 overflow-y-auto p-3 bg-muted/30 rounded-xl">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Speakers</p>
