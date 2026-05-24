@@ -437,7 +437,7 @@ const SpeechToText = () => {
           >
             <input
               type="file"
-              accept="audio/*"
+              accept="audio/*,video/*"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -446,8 +446,10 @@ const SpeechToText = () => {
               }}
             />
             <Upload className="w-7 h-7 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-sm font-medium">Drop audio file or click to upload</p>
-            <p className="text-xs text-muted-foreground mt-1">MP3 · WAV · M4A · WEBM · OGG (max 500MB · auto-chunked)</p>
+            <p className="text-sm font-medium">Drop audio or video file or click to upload</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Audio: MP3 · WAV · M4A · AAC · OGG · OPUS · FLAC · WEBM · AMR · WMA · AIFF — Video: MP4 · MOV · WEBM · MKV · AVI · WMV · FLV · 3GP · MPEG (max 500MB · auto-chunked)
+            </p>
           </label>
 
           {chunkProgress && (
@@ -462,7 +464,7 @@ const SpeechToText = () => {
           {audioUrl && (
             <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-xl">
               <FileAudio className="w-5 h-5 text-primary shrink-0" />
-              <audio src={audioUrl} controls className="flex-1 h-9" />
+              <audio ref={audioElRef} src={audioUrl} controls className="flex-1 h-9" />
             </div>
           )}
 
