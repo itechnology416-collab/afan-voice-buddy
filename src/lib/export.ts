@@ -73,6 +73,7 @@ export interface TimedWord {
   end: number;
   speaker?: string;
   type?: string; // "word" | "spacing" | "audio_event"
+  confidence?: number; // 0..1 — lower means more uncertain
 }
 
 export function exportSrtFromWords(words: TimedWord[], base = "subtitles") {

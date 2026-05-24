@@ -82,6 +82,19 @@ Deno.serve(async (req) => {
     }
 
     const data = await r.json();
+    // Normalize per-word confidence (ElevenLabs returns logprob).
+    if (Array.isArray(data?.words)) {
+      data.words = data.words.map((w: Record<string, unknown>) => {
+        const lp = typeof w.logprob === "number" ? (w.logprob as number) : undefined;
+        const confidence =
+          typeof w.confidence === "number"
+            ? (w.confidence as number)
+            : lp != null
+            ? Math.max(0, Math.min(1, Math.exp(lp)))
+            : undefined;
+        return { ...w, confidence };
+      });
+    }
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
